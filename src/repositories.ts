@@ -178,3 +178,7 @@ export class RepositoryStore {
     return factory && factory();
   }
 }
+
+const repositories = new RepositoryStore();
+
+export { repositories };

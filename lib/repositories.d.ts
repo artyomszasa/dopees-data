@@ -65,4 +65,5 @@ export declare class RepositoryStore {
     get<T>(name: string): Repository<T> | undefined;
     getRepository<TData, TKey>(name: string): KeyRepository<TData, TKey> | undefined;
 }
-export {};
+declare const repositories: RepositoryStore;
+export { repositories };
