@@ -61,9 +61,10 @@ interface FactoryMap {
 }
 export declare class RepositoryStore {
     store: FactoryMap;
+    __get(name: string): any;
     register<TData, TKey>(name: string, factory: () => KeyRepository<TData, TKey>): void;
-    get<T>(name: string): Repository<T> | undefined;
-    getRepository<TData, TKey>(name: string): KeyRepository<TData, TKey> | undefined;
+    get<T>(name: string): Repository<T>;
+    getRepository<TData, TKey>(name: string): KeyRepository<TData, TKey>;
 }
 declare const repositories: RepositoryStore;
 export { repositories };

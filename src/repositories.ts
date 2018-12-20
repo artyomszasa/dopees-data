@@ -165,18 +165,18 @@ interface FactoryMap {
 
 export class RepositoryStore {
   store: FactoryMap = {};
+  __get(name: string) {
+    const factory = this.store[name];
+    if (!factory) {
+      throw new Error(`no repository has been registered for ${name}`);
+    }
+    return factory();
+  }
   register<TData, TKey>(name: string, factory: () => KeyRepository<TData, TKey>) {
     this.store[name] = factory;
   }
-  get<T>(name: string): Repository<T>|undefined {
-    const factory = this.store[name];
-    return factory && factory();
-  }
-  getRepository<TData, TKey>(name: string): KeyRepository<TData, TKey>|undefined
-  {
-    const factory = this.store[name];
-    return factory && factory();
-  }
+  get<T>(name: string): Repository<T> { return this.__get(name); }
+  getRepository<TData, TKey>(name: string): KeyRepository<TData, TKey> { return this.__get(name); }
 }
 
 const repositories = new RepositoryStore();
