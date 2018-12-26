@@ -1,4 +1,6 @@
-import { generate as generateParser } from 'pegjs/lib/peg';
+import peg from 'pegjs/lib/peg';
+
+const generateParser = peg.generate;
 
 const grammar =
     [ 'Lambda = source:Ident _ Arrow _ expr:Expr {return new dope.Q.Lambda(expr,new dope.Q.Param(source));}',
