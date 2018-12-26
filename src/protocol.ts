@@ -1,4 +1,4 @@
-import { generate as generateParser } from 'pegjs';
+import { generate as generateParser } from 'pegjs/index';
 
 const grammar =
     [ 'Lambda = source:Ident _ Arrow _ expr:Expr {return new dope.Q.Lambda(expr,new dope.Q.Param(source));}',
