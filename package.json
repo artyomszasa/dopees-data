@@ -10,7 +10,6 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/pegjs": "0.10.1",
     "typescript": "3.2.2"
   },
   "dependencies": {
