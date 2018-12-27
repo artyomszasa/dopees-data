@@ -10,7 +10,7 @@
         "inlineSourceMap": true,
         "baseUrl": ".",
         "paths": {
-            "*": ["types/*"]
+            "dopees-core/*": [ "node_modules/dopees-core/*" ]
         }
     },
     "include": ["src"],

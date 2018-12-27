@@ -1,5 +1,6 @@
 import { Query, Repository, CancellableAsyncIterator, QuerySortDirection, KeyRepository, Cancellation } from "./repositories"
 import * as Q from './protocol'
+import { decoratedFetch as fetch } from 'dopees-core/lib/fetch';
 
 
 const checkNum = (n: number, message: string) => {
@@ -93,7 +94,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
     const abortion = linkAbortion(cancellation);
     try {
       const uri = `${this.endpoint}/${this.type}/${key}`;
-      const response = await window.fetch(uri, {
+      const response = await fetch(uri, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
         signal: abortion.signal
@@ -109,7 +110,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
   async update(item: TData, cancellation?: Cancellation): Promise<TData> {
     const abortion = linkAbortion(cancellation);
     try {
-      const response = await window.fetch(this.itemEndpoint(item), {
+      const response = await fetch(this.itemEndpoint(item), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -128,7 +129,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
   async insert(item: TData, cancellation: Cancellation): Promise<TData> {
     const abortion = linkAbortion(cancellation);
     try {
-      const response = await window.fetch(this.collectionEndpoint, {
+      const response = await fetch(this.collectionEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
@@ -141,7 +142,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
         }
         const lookupAbortion = linkAbortion(cancellation);
         try {
-          const resp = await window.fetch(uri, {
+          const resp = await fetch(uri, {
             method: 'GET',
             headers: { 'Accept': 'application/json' },
             signal: lookupAbortion.signal
@@ -168,7 +169,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
       const headers = new Headers();
       headers.append('Accept', 'application/json');
       headers.append('X-Filter', predicate);
-      const response = await window.fetch(this.collectionEndpoint, { headers, signal: abortion.signal });
+      const response = await fetch(this.collectionEndpoint, { headers, signal: abortion.signal });
       if (response.ok) {
         const header = response.headers.get('X-Total-Count');
         return header ? (parseInt(header, 10) || 0) : 0;
@@ -201,7 +202,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
             headers.append('X-Filter', predicate);
             headers.append('X-Sort-By', sortBy || '');
             headers.append('X-Sort-By-Direction', sortByDirection || '');
-            const response = await window.fetch(repo.collectionEndpoint, { headers, signal: abortion.signal });
+            const response = await fetch(repo.collectionEndpoint, { headers, signal: abortion.signal });
             if (response.ok) {
               items = await response.json();
             } else {

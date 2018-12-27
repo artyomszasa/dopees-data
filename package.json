@@ -9,6 +9,9 @@
   },
   "author": "",
   "license": "ISC",
+  "dependencies": {
+    "dopees-core": "artyomszasa/dopees-core"
+  },
   "devDependencies": {
     "typescript": "3.2.2"
   }
