@@ -54,10 +54,33 @@ export class ConvertVisitor implements ExprVisitor<Expr> {
   }
 }
 
+export interface ToStringContext {
+  symbolToString(symbol: Symbol): string;
+}
+
+const emptyContext = (): ToStringContext => {
+  const keys: Symbol[] = [];
+  const names: string[] = [];
+  let next = 0;
+  return {
+    symbolToString(symbol: Symbol) {
+      const index = keys.indexOf(symbol);
+      if (-1 !== index) {
+        return names[index];
+      }
+      const name = `e${++next}`;
+      keys.push(symbol);
+      names.push(name);
+      return name;
+    }
+  };
+}
+
+
 export abstract class Expr {
   abstract accept<T>(visitor : ExprVisitor<T>) : T
   abstract eq(other : Expr) : boolean
-  abstract toString() : string
+  abstract toString(context?: ToStringContext): string;
 }
 
 export class Const extends Expr {
@@ -72,8 +95,8 @@ export class Const extends Expr {
 }
 
 export class Prop extends Expr {
-  instance : Expr
-  name : string
+  instance: Expr
+  name: string
   constructor(instance : Expr, name : string) {
       super();
       this.instance = instance;
@@ -81,7 +104,10 @@ export class Prop extends Expr {
   }
   accept<T>(visitor : ExprVisitor<T>) { return visitor.visitProp(this); }
   eq(other : Expr) : boolean { return other instanceof Prop && other.instance.eq(this.instance) && other.name === this.name; }
-  toString() { return `${this.instance.toString()}.${this.name}`; }
+  toString(context?: ToStringContext) {
+    const ctx = context || emptyContext();
+    return `${this.instance.toString(ctx)}.${this.name}`;
+  }
 }
 
 export class Param extends Expr {
@@ -92,7 +118,10 @@ export class Param extends Expr {
   }
   accept<T>(visitor : ExprVisitor<T>) { return visitor.visitParam(this); }
   eq(other : Expr) : boolean { return other instanceof Param && other.name === this.name; }
-  toString() { return this.name.toString(); }
+  toString(context?: ToStringContext) {
+    const ctx = context || emptyContext();
+    return ctx.symbolToString(this.name);
+  }
 }
 
 export class BinOp extends Expr {
@@ -112,30 +141,31 @@ export class BinOp extends Expr {
       [BinaryOperation.SUB]: '-'
   }
   static unwind (head : Expr, tail : Array<[any, string, any, Expr]>) {
-      if (!tail || !tail.length) {
-          return head;
-      }
-      return tail.reduce((left, vals) => {
-          const op = vals[1];
-          const right = vals[3];
-          return new BinOp(left, <BinaryOperation>op, right);
-      }, head);
+    if (!tail || !tail.length) {
+      return head;
+    }
+    return tail.reduce((left, vals) => {
+      const op = vals[1];
+      const right = vals[3];
+      return new BinOp(left, <BinaryOperation>op, right);
+    }, head);
   }
   left : Expr
   op : BinaryOperation
   right : Expr
   constructor (left : Expr, op : BinaryOperation, right : Expr) {
-      super();
-      this.left = left;
-      this.op = op;
-      this.right = right;
+    super();
+    this.left = left;
+    this.op = op;
+    this.right = right;
   }
   accept<T>(visitor : ExprVisitor<T>) { return visitor.visitBinary(this); }
   eq(other : Expr) : boolean {
-      return other instanceof BinOp && other.op === this.op && other.left.eq(this.left) && other.right.eq(this.right);
+    return other instanceof BinOp && other.op === this.op && other.left.eq(this.left) && other.right.eq(this.right);
   }
-  toString() {
-      return `(${this.left.toString()} ${BinOp.binOpStrings[this.op]} ${this.right.toString()})`;
+  toString(context?: ToStringContext) {
+    const ctx = context || emptyContext();
+    return `(${this.left.toString(ctx)} ${BinOp.binOpStrings[this.op]} ${this.right.toString(ctx)})`;
   }
 }
 
@@ -154,13 +184,14 @@ export class UnOp extends Expr {
   }
   accept<T>(visitor : ExprVisitor<T>) { return visitor.visitUnary(this); }
   eq(other : Expr) : boolean {
-      return other instanceof UnOp && other.op === this.op && other.operand.eq(this.operand);
+    return other instanceof UnOp && other.op === this.op && other.operand.eq(this.operand);
   }
-  toString() {
-      if (this.op === UnaryOperation.NOT) {
-          return `!(${this.operand})`;
-      }
-      return `${UnOp.unOpStrings[this.op]}(${this.operand})`;
+  toString(context?: ToStringContext) {
+    const ctx = context || emptyContext();
+    if (this.op === UnaryOperation.NOT) {
+      return `!(${this.operand.toString(ctx)})`;
+    }
+    return `${UnOp.unOpStrings[this.op]}(${this.operand.toString(ctx)})`;
   }
 }
 
@@ -210,8 +241,9 @@ export class Call extends Expr {
       }
       return true;
   }
-  toString() {
-      return `${this.name}(${this.args.map(arg => arg.toString()).join(',')})`;
+  toString(context?: ToStringContext) {
+    const ctx = context || emptyContext();
+    return `${this.name}(${this.args.map(arg => arg.toString(ctx)).join(',')})`;
   }
 }
 
@@ -230,7 +262,10 @@ export class Lambda extends Expr {
       }
       throw new Error('Lambda equality is not implemented!');
   }
-  toString() { return `${this.param} => ${this.body}`; }
+  toString(context?: ToStringContext) {
+    const ctx = context || emptyContext();
+    return `${this.param.toString(ctx)} => ${this.body.toString(ctx)}`;
+  }
   substituteParameter(target: Param) {
       return new Lambda(substituteParameter(this.param, target, this.body), target);
   }

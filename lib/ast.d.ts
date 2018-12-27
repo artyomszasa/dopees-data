@@ -36,10 +36,13 @@ export declare class ConvertVisitor implements ExprVisitor<Expr> {
     visitCall(expr: Call): Expr;
     visitLambda(expr: Lambda): Expr;
 }
+export interface ToStringContext {
+    symbolToString(symbol: Symbol): string;
+}
 export declare abstract class Expr {
     abstract accept<T>(visitor: ExprVisitor<T>): T;
     abstract eq(other: Expr): boolean;
-    abstract toString(): string;
+    abstract toString(context?: ToStringContext): string;
 }
 export declare class Const extends Expr {
     value: string | null;
@@ -54,14 +57,14 @@ export declare class Prop extends Expr {
     constructor(instance: Expr, name: string);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
-    toString(): string;
+    toString(context?: ToStringContext): string;
 }
 export declare class Param extends Expr {
     name: Symbol;
     constructor(name: Symbol);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
-    toString(): string;
+    toString(context?: ToStringContext): string;
 }
 export declare class BinOp extends Expr {
     private static binOpStrings;
@@ -72,7 +75,7 @@ export declare class BinOp extends Expr {
     constructor(left: Expr, op: BinaryOperation, right: Expr);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
-    toString(): string;
+    toString(context?: ToStringContext): string;
 }
 export declare class UnOp extends Expr {
     private static unOpStrings;
@@ -81,7 +84,7 @@ export declare class UnOp extends Expr {
     constructor(op: UnaryOperation, operand: Expr);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
-    toString(): string;
+    toString(context?: ToStringContext): string;
 }
 interface KnownFunctionCalls {
     [name: string]: Array<number> | number;
@@ -93,7 +96,7 @@ export declare class Call extends Expr {
     constructor(name: string, args: Array<Expr>);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
-    toString(): string;
+    toString(context?: ToStringContext): string;
 }
 export declare class Lambda extends Expr {
     body: Expr;
@@ -101,7 +104,7 @@ export declare class Lambda extends Expr {
     constructor(body: Expr, param: Param);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
-    toString(): string;
+    toString(context?: ToStringContext): string;
     substituteParameter(target: Param): Lambda;
     and(other: Lambda): Lambda;
 }

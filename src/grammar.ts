@@ -184,7 +184,7 @@ function peg$parse(input: string, options?: any) {
   const peg$startRuleFunctions: {[id: string]: any} = { Lambda: peg$parseLambda };
   let peg$startRuleFunction: () => any = peg$parseLambda;
 
-  const peg$c0 = function(source: any, expr: any) {return new ast.Lambda(expr,new ast.Param(source));};
+  const peg$c0 = function(source: any, expr: any) {return new ast.Lambda(expr,new ast.Param(getSymbol(source)));};
   const peg$c1 = /^[a-zA-Z]/;
   const peg$c2 = peg$classExpectation([["a", "z"], ["A", "Z"]], false, false);
   const peg$c3 = /^[a-zA-Z0-9]/;
