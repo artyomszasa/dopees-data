@@ -1,6 +1,7 @@
 import { Query, Repository, CancellableAsyncIterator, QuerySortDirection, KeyRepository, Cancellation } from "./repositories"
 import * as Q from './protocol'
 import { decoratedFetch as fetch } from 'dopees-core/lib/fetch';
+import * as utf8 from 'dopees-core/lib/utf8';
 
 
 const checkNum = (n: number, message: string) => {
@@ -233,6 +234,8 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
   }
 }
 
+const regex = /[\0-\x08\n-\x1F\x7F-\uFFFF]/g;
+
 class RestQuery<T> extends Query<T> {
   static defaultCount = 100000
   readonly repo: RestRepository<T>
@@ -255,8 +258,7 @@ class RestQuery<T> extends Query<T> {
       return '';
     }
     const inp = input instanceof Q.Expr ? input.toString() : input;
-    // return window.utf8.encode(inp).replace(regex, m => '%' + ('0' + m.charCodeAt(0).toString(16).toUpperCase()).slice(-2));
-    return inp;
+    return utf8.utf8encode(inp).replace(regex, m => '%' + ('0' + m.charCodeAt(0).toString(16).toUpperCase()).slice(-2));
   }
   get escapedPredicate () {
     return this.escape(this.predicate);
