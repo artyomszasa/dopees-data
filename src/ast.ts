@@ -119,6 +119,10 @@ export class Param extends Expr {
   accept<T>(visitor : ExprVisitor<T>) { return visitor.visitParam(this); }
   eq(other : Expr) : boolean { return other instanceof Param && other.name === this.name; }
   toString(context?: ToStringContext) {
+    // in protocol v1 param may be string...
+    if ('string' === typeof this.name) {
+        return this.name;
+    }
     const ctx = context || emptyContext();
     return ctx.symbolToString(this.name);
   }

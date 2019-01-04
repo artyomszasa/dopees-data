@@ -43,9 +43,14 @@ function linkAbortion(cancellation?: Cancellation): Abortion {
   return { signal, subscription };
 }
 
+export interface V1Query {
+  query?: string,
+  type?: string
+}
+
 export interface RestRepository<T> extends Repository<T> {
-  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection): CancellableAsyncIterator<T>;
-  total(predicate: string, cancellation: Cancellation): Promise<number>;
+  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query): CancellableAsyncIterator<T>;
+  total(predicate: string, query: V1Query|undefined, cancellation: Cancellation): Promise<number>;
 }
 
 export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey>, RestRepository<TData> {
@@ -69,7 +74,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
     return this.options.keyProperty || 'id';
   }
   get items(): Query<TData> {
-    return new RestQuery<TData>(this, 0, RestQuery.defaultCount);
+    return new RestQuery<TData>(this, 0, RestQuery.defaultCount, null, undefined, undefined, this.options.protocolVersion);
   }
   private getKey(item: TData) {
     return (item as any)[this.keyProperty] as TKey;
@@ -164,12 +169,16 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
   remove(item: TData, cancellation: Cancellation): Promise<void> {
     throw new Error("Method not implemented.");
   }
-  async total(predicate: string, cancellation: Cancellation): Promise<number> {
+  async total(predicate: string, query: V1Query|undefined, cancellation: Cancellation): Promise<number> {
     const abortion = linkAbortion(cancellation);
     try {
       const headers = new Headers();
       headers.append('Accept', 'application/json');
       headers.append('X-Filter', predicate);
+      if (query && query.query) {
+        headers.append('X-Query', query.query);
+        headers.append('X-SearchType', query.type || 'partial');
+      }
       const response = await fetch(this.collectionEndpoint, { headers, signal: abortion.signal });
       if (response.ok) {
         const header = response.headers.get('X-Total-Count');
@@ -181,7 +190,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
       abortion.subscription.remove();
     }
   }
-  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection): CancellableAsyncIterator<TData> {
+  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query): CancellableAsyncIterator<TData> {
     const repo = this;
     let error : any = null;
     let items : TData[]|null = null;
@@ -203,6 +212,10 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
             headers.append('X-Filter', predicate);
             headers.append('X-Sort-By', sortBy || '');
             headers.append('X-Sort-By-Direction', sortByDirection || '');
+            if (query && query.query) {
+              headers.append('X-Query', query.query);
+              headers.append('X-SearchType', query.type || 'partial');
+            }
             const response = await fetch(repo.collectionEndpoint, { headers, signal: abortion.signal });
             if (response.ok) {
               items = await response.json();
@@ -237,14 +250,15 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
 const regex = /[\0-\x08\n-\x1F\x7F-\uFFFF]/g;
 
 class RestQuery<T> extends Query<T> {
-  static defaultCount = 100000
-  readonly repo: RestRepository<T>
-  readonly offset: number
-  readonly count: number
-  readonly predicate: Q.Lambda|null
-  readonly sortBy: string
-  readonly sortByDirection: QuerySortDirection
-  constructor (repo: RestRepository<T>, offset: number, count: number, predicate?: Q.Lambda|null, sortBy?: string, sortByDirection?: QuerySortDirection) {
+  static defaultCount = 100000;
+  readonly repo: RestRepository<T>;
+  readonly offset: number;
+  readonly count: number;
+  readonly predicate: Q.Lambda|null;
+  readonly sortBy: string;
+  readonly sortByDirection: QuerySortDirection;
+  readonly protocolVersion: number;
+  constructor (repo: RestRepository<T>, offset: number, count: number, predicate?: Q.Lambda|null, sortBy?: string, sortByDirection?: QuerySortDirection, protocolVersion?: number) {
     super();
     this.repo = repo;
     this.offset = offset || 0;
@@ -252,14 +266,69 @@ class RestQuery<T> extends Query<T> {
     this.predicate = predicate || null;
     this.sortBy = sortBy || '';
     this.sortByDirection = sortByDirection || QuerySortDirection.Asc;
+    this.protocolVersion = protocolVersion || 2;
   }
   private escape (input: string|Q.Expr|null) {
     if (!input) {
       return '';
     }
-    const inp = input instanceof Q.Expr ? input.toString() : input;
+    const inp = input instanceof Q.Expr ? this.applyProtocol(input).toString() : input;
     return utf8.utf8encode(inp).replace(regex, m => '%' + ('0' + m.charCodeAt(0).toString(16).toUpperCase()).slice(-2));
   }
+
+  private applyProtocol(expr: Q.Expr) {
+    if (this.protocolVersion < 2 && expr instanceof Q.Lambda) {
+      const param = expr.param;
+      return expr.body.accept<Q.Expr>({
+        visitConst(c) { return c; },
+        visitParam(p) { return p; },
+        visitProp(p) { return p.instance.eq(param) ? new Q.Param(<any> p.name) : new Q.Prop(p.instance.accept(this), p.name); },
+        visitBinary(b) { return new Q.BinOp(b.left.accept(this), b.op, b.right.accept(this)); },
+        visitUnary(u) { return new Q.UnOp(u.op, u.operand.accept(this)); },
+        visitCall(c) { return new Q.Call(c.name, c.args.map(arg => arg.accept(this))); },
+        visitLambda(l) { return new Q.Lambda(l.body.accept(this), l.param); }
+      })
+    }
+    return expr;
+  }
+
+  private extractV1Query(expr: Q.Expr) {
+    const q: { query?: string } = {};
+    const v1Expr = expr.accept<Q.Expr>({
+      visitConst(c) { return c; },
+      visitParam(p) { return p; },
+      visitProp(p) { return new Q.Prop(p.instance.accept(this), p.name); },
+      visitBinary(b) {
+        const l = b.left.accept(this);
+        const r = b.right.accept(this);
+        if (l instanceof Q.Const && (<any> l.value === true || <any> l.value === 'true')) {
+            return r;
+        }
+        if (r instanceof Q.Const && (<any> r.value === true || <any> r.value === 'true')) {
+            return l;
+        }
+        return new Q.BinOp(l, b.op, r);
+      },
+      visitUnary(u) { return new Q.UnOp(u.op, u.operand.accept(this)); },
+      visitCall (c) {
+        if ('partialMatch' === c.name && 2 === c.args.length) {
+          const arg = c.args[1];
+          if (arg instanceof Q.Const && arg.value) {
+            q.query = arg.value;
+            return new Q.Const(<any> true);
+          }
+          throw new Error('not supported partial match in protocol v1');
+        }
+        return new Q.Call(c.name, c.args.map(arg => arg.accept(this)));
+      },
+      visitLambda(l) { return new Q.Lambda(l.body.accept(this), l.param); }
+    });
+    return {
+        expr: v1Expr,
+        query: q
+    };
+  }
+
   get escapedPredicate () {
     return this.escape(this.predicate);
   }
@@ -277,7 +346,8 @@ class RestQuery<T> extends Query<T> {
       this.count,
       this.predicate ? this.predicate.and(p) : p,
       this.sortBy,
-      this.sortByDirection
+      this.sortByDirection,
+      this.protocolVersion
     );
   }
   skip(n: number): Query<T> {
@@ -292,6 +362,7 @@ class RestQuery<T> extends Query<T> {
       this.predicate,
       this.sortBy,
       this.sortByDirection,
+      this.protocolVersion
     );
   }
   take(n: number): Query<T> {
@@ -302,7 +373,8 @@ class RestQuery<T> extends Query<T> {
       n,
       this.predicate,
       this.sortBy,
-      this.sortByDirection);
+      this.sortByDirection,
+      this.protocolVersion);
   }
   orderBy(selector: string, direction?: QuerySortDirection): Query<T> {
     return new RestQuery<T>(
@@ -311,12 +383,45 @@ class RestQuery<T> extends Query<T> {
       this.count,
       this.predicate,
       selector,
-      direction || QuerySortDirection.Asc);
+      direction || QuerySortDirection.Asc,
+      this.protocolVersion);
   }
   async total(cancellation: Cancellation): Promise<number> {
-    return this.repo.total(this.escapedPredicate, cancellation);
+    let predicate: string;
+    let v1Query: V1Query|undefined;
+    if (!this.predicate) {
+      predicate = '';
+    } else {
+      if (this.protocolVersion < 2) {
+        const data = this.extractV1Query(this.predicate);
+        predicate = this.escape(data.expr);
+        v1Query = data.query;
+        if (predicate && predicate.startsWith('(') && predicate.endsWith(')')) {
+          predicate = predicate.substr(1, predicate.length - 2);
+        }
+      } else {
+        predicate = this.escape(this.predicate);
+      }
+    }
+    return this.repo.total(predicate, v1Query, cancellation);
   }
   exec(): CancellableAsyncIterator<T> {
-    return this.repo.exec(this.offset, this.count, this.escapedPredicate, this.sortBy, this.sortByDirection);
+    let predicate: string;
+    let v1Query: V1Query|undefined;
+    if (!this.predicate) {
+      predicate = '';
+    } else {
+      if (this.protocolVersion < 2) {
+        const data = this.extractV1Query(this.predicate);
+        predicate = this.escape(data.expr);
+        v1Query = data.query;
+        if (predicate && predicate.startsWith('(') && predicate.endsWith(')')) {
+          predicate = predicate.substr(1, predicate.length - 2);
+        }
+      } else {
+        predicate = this.escape(this.predicate);
+      }
+    }
+    return this.repo.exec(this.offset, this.count, predicate, this.sortBy, this.sortByDirection, v1Query);
   }
 };
