@@ -757,13 +757,13 @@ function peg$parse(input: string, options?: any) {
         if (s5 === peg$FAILED) {
           s5 = peg$parseNeq();
           if (s5 === peg$FAILED) {
-            s5 = peg$parseGt();
+            s5 = peg$parseGe();
             if (s5 === peg$FAILED) {
-              s5 = peg$parseLt();
+              s5 = peg$parseLe();
               if (s5 === peg$FAILED) {
-                s5 = peg$parseGe();
+                s5 = peg$parseGt();
                 if (s5 === peg$FAILED) {
-                  s5 = peg$parseLe();
+                  s5 = peg$parseLt();
                 }
               }
             }
@@ -807,13 +807,13 @@ function peg$parse(input: string, options?: any) {
           if (s5 === peg$FAILED) {
             s5 = peg$parseNeq();
             if (s5 === peg$FAILED) {
-              s5 = peg$parseGt();
+              s5 = peg$parseGe();
               if (s5 === peg$FAILED) {
-                s5 = peg$parseLt();
+                s5 = peg$parseLe();
                 if (s5 === peg$FAILED) {
-                  s5 = peg$parseGe();
+                  s5 = peg$parseGt();
                   if (s5 === peg$FAILED) {
-                    s5 = peg$parseLe();
+                    s5 = peg$parseLt();
                   }
                 }
               }
@@ -1370,13 +1370,13 @@ function peg$parse(input: string, options?: any) {
     if (s1 === peg$FAILED) {
       s1 = peg$parseNeq();
       if (s1 === peg$FAILED) {
-        s1 = peg$parseGt();
+        s1 = peg$parseGe();
         if (s1 === peg$FAILED) {
-          s1 = peg$parseLt();
+          s1 = peg$parseLe();
           if (s1 === peg$FAILED) {
-            s1 = peg$parseGe();
+            s1 = peg$parseGt();
             if (s1 === peg$FAILED) {
-              s1 = peg$parseLe();
+              s1 = peg$parseLt();
               if (s1 === peg$FAILED) {
                 s1 = peg$parseOr();
                 if (s1 === peg$FAILED) {

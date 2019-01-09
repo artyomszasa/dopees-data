@@ -10,8 +10,12 @@ export interface V1Query {
     type?: string;
 }
 export interface RestRepository<T> extends Repository<T> {
-    exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query): CancellableAsyncIterator<T>;
-    total(predicate: string, query: V1Query | undefined, cancellation: Cancellation): Promise<number>;
+    exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query, customOptions?: {
+        [key: string]: string | undefined;
+    }): CancellableAsyncIterator<T>;
+    total(predicate: string, query: V1Query | undefined, customOptions: {
+        [key: string]: string | undefined;
+    }, cancellation: Cancellation): Promise<number>;
 }
 export declare class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey>, RestRepository<TData> {
     readonly options: RestRepositoryOptions;
@@ -30,7 +34,11 @@ export declare class KeyRestRepository<TData, TKey> implements KeyRepository<TDa
     update(item: TData, cancellation?: Cancellation): Promise<TData>;
     insert(item: TData, cancellation: Cancellation): Promise<TData>;
     remove(item: TData, cancellation: Cancellation): Promise<void>;
-    total(predicate: string, query: V1Query | undefined, cancellation: Cancellation): Promise<number>;
-    exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query): CancellableAsyncIterator<TData>;
+    total(predicate: string, query: V1Query | undefined, customOptions: {
+        [key: string]: string | undefined;
+    }, cancellation: Cancellation): Promise<number>;
+    exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query, customOptions?: {
+        [key: string]: string | undefined;
+    }): CancellableAsyncIterator<TData>;
 }
 export {};

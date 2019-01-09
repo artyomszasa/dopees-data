@@ -49,8 +49,8 @@ export interface V1Query {
 }
 
 export interface RestRepository<T> extends Repository<T> {
-  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query): CancellableAsyncIterator<T>;
-  total(predicate: string, query: V1Query|undefined, cancellation: Cancellation): Promise<number>;
+  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query, customOptions?: { [key: string]: string|undefined }): CancellableAsyncIterator<T>;
+  total(predicate: string, query: V1Query|undefined, customOptions: { [key: string]: string|undefined }, cancellation: Cancellation): Promise<number>;
 }
 
 export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey>, RestRepository<TData> {
@@ -74,7 +74,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
     return this.options.keyProperty || 'id';
   }
   get items(): Query<TData> {
-    return new RestQuery<TData>(this, 0, RestQuery.defaultCount, null, undefined, undefined, this.options.protocolVersion);
+    return new RestQuery<TData>(this, 0, RestQuery.defaultCount, null, undefined, undefined, {}, this.options.protocolVersion);
   }
   private getKey(item: TData) {
     return (item as any)[this.keyProperty] as TKey;
@@ -169,7 +169,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
   remove(item: TData, cancellation: Cancellation): Promise<void> {
     throw new Error("Method not implemented.");
   }
-  async total(predicate: string, query: V1Query|undefined, cancellation: Cancellation): Promise<number> {
+  async total(predicate: string, query: V1Query|undefined, customOptions: { [key: string]: string|undefined }, cancellation: Cancellation): Promise<number> {
     const abortion = linkAbortion(cancellation);
     try {
       const headers = new Headers();
@@ -179,6 +179,13 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
         headers.append('X-Query', query.query);
         headers.append('X-SearchType', query.type || 'partial');
       }
+      const customKeys = Object.keys(customOptions || {});
+      customKeys.forEach((key) => {
+        const value = customOptions[key];
+        if (value) {
+          headers.append(key, value);
+        }
+      });
       const response = await fetch(this.collectionEndpoint, { headers, signal: abortion.signal });
       if (response.ok) {
         const header = response.headers.get('X-Total-Count');
@@ -190,7 +197,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
       abortion.subscription.remove();
     }
   }
-  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query): CancellableAsyncIterator<TData> {
+  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query, customOptions?: { [key: string]: string|undefined }): CancellableAsyncIterator<TData> {
     const repo = this;
     let error : any = null;
     let items : TData[]|null = null;
@@ -216,6 +223,13 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
               headers.append('X-Query', query.query);
               headers.append('X-SearchType', query.type || 'partial');
             }
+            const customKeys = Object.keys(customOptions || {});
+            customKeys.forEach((key) => {
+              const value = (customOptions || {})[key];
+              if (value) {
+                headers.append(key, value);
+              }
+            });
             const response = await fetch(repo.collectionEndpoint, { headers, signal: abortion.signal });
             if (response.ok) {
               items = await response.json();
@@ -258,7 +272,8 @@ class RestQuery<T> extends Query<T> {
   readonly sortBy: string;
   readonly sortByDirection: QuerySortDirection;
   readonly protocolVersion: number;
-  constructor (repo: RestRepository<T>, offset: number, count: number, predicate?: Q.Lambda|null, sortBy?: string, sortByDirection?: QuerySortDirection, protocolVersion?: number) {
+  readonly customOptions: { [key: string]: string|undefined };
+  constructor (repo: RestRepository<T>, offset: number, count: number, predicate?: Q.Lambda|null, sortBy?: string, sortByDirection?: QuerySortDirection, customOptions?: { [key: string]: string|undefined }, protocolVersion?: number) {
     super();
     this.repo = repo;
     this.offset = offset || 0;
@@ -266,6 +281,7 @@ class RestQuery<T> extends Query<T> {
     this.predicate = predicate || null;
     this.sortBy = sortBy || '';
     this.sortByDirection = sortByDirection || QuerySortDirection.Asc;
+    this.customOptions = customOptions || {};
     this.protocolVersion = protocolVersion || 2;
   }
   private escape (input: string|Q.Expr|null) {
@@ -335,7 +351,7 @@ class RestQuery<T> extends Query<T> {
   get escapedSortBy () {
     return this.escape(this.sortBy);
   }
-  filter (predicate: string|Q.Lambda): Query<T> {
+  filter(predicate: string|Q.Lambda) {
     const p = 'string' === typeof predicate ? Q.parse(predicate) : predicate;
     if (!(p instanceof Q.Lambda)) {
       throw TypeError('predicate must be a lambda expression');
@@ -347,6 +363,7 @@ class RestQuery<T> extends Query<T> {
       this.predicate ? this.predicate.and(p) : p,
       this.sortBy,
       this.sortByDirection,
+      this.customOptions,
       this.protocolVersion
     );
   }
@@ -362,6 +379,7 @@ class RestQuery<T> extends Query<T> {
       this.predicate,
       this.sortBy,
       this.sortByDirection,
+      this.customOptions,
       this.protocolVersion
     );
   }
@@ -374,6 +392,7 @@ class RestQuery<T> extends Query<T> {
       this.predicate,
       this.sortBy,
       this.sortByDirection,
+      this.customOptions,
       this.protocolVersion);
   }
   orderBy(selector: string, direction?: QuerySortDirection): Query<T> {
@@ -384,6 +403,19 @@ class RestQuery<T> extends Query<T> {
       this.predicate,
       selector,
       direction || QuerySortDirection.Asc,
+      this.customOptions,
+      this.protocolVersion);
+  }
+  setCustomOptions(options: { [key: string]: string|undefined }, replace?: boolean): Query<T> {
+    const opts = replace ? (options || {}) : Object.assign({}, this.customOptions, options);
+    return new RestQuery<T>(
+      this.repo,
+      this.offset,
+      this.count,
+      this.predicate,
+      this.sortBy,
+      this.sortByDirection,
+      options,
       this.protocolVersion);
   }
   async total(cancellation: Cancellation): Promise<number> {
@@ -403,7 +435,7 @@ class RestQuery<T> extends Query<T> {
         predicate = this.escape(this.predicate);
       }
     }
-    return this.repo.total(predicate, v1Query, cancellation);
+    return this.repo.total(predicate, v1Query, this.customOptions, cancellation);
   }
   exec(): CancellableAsyncIterator<T> {
     let predicate: string;
@@ -422,6 +454,6 @@ class RestQuery<T> extends Query<T> {
         predicate = this.escape(this.predicate);
       }
     }
-    return this.repo.exec(this.offset, this.count, predicate, this.sortBy, this.sortByDirection, v1Query);
+    return this.repo.exec(this.offset, this.count, predicate, this.sortBy, this.sortByDirection, v1Query, this.customOptions);
   }
 };

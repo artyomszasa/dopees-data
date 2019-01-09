@@ -39,6 +39,9 @@ export declare abstract class Query<T> {
     abstract skip(n: number): Query<T>;
     abstract take(n: number): Query<T>;
     abstract orderBy(sortBy: string, sortByDirection: QuerySortDirection): Query<T>;
+    abstract setCustomOptions(options: {
+        [key: string]: string | undefined;
+    }, replace?: boolean): Query<T>;
     abstract total(cancellation: Cancellation): Promise<number>;
     forEach(callback: (item: T, index: number) => Promise<any>, cancellation?: Cancellation): Promise<void>;
     toArray(cancellation?: Cancellation): Promise<T[]>;

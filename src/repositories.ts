@@ -68,10 +68,11 @@ export enum QuerySortDirection {
 
 export abstract class Query<T> {
   abstract exec(): CancellableAsyncIterator<T>
-  abstract filter(predicate: string|Q.Expr): Query<T>
-  abstract skip(n: number): Query<T>
-  abstract take(n: number): Query<T>
-  abstract orderBy(sortBy: string, sortByDirection: QuerySortDirection): Query<T>
+  abstract filter(predicate: string|Q.Expr): Query<T>;
+  abstract skip(n: number): Query<T>;
+  abstract take(n: number): Query<T>;
+  abstract orderBy(sortBy: string, sortByDirection: QuerySortDirection): Query<T>;
+  abstract setCustomOptions(options: { [key: string]: string|undefined }, replace?: boolean): Query<T>;
   abstract total(cancellation: Cancellation): Promise<number>
 
   async forEach(callback : (item : T, index : number) => Promise<any>, cancellation? : Cancellation) {
