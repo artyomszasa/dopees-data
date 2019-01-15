@@ -76,7 +76,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
   get items(): Query<TData> {
     return new RestQuery<TData>(this, 0, RestQuery.defaultCount, null, undefined, undefined, {}, this.options.protocolVersion);
   }
-  private getKey(item: TData) {
+  protected getKey(item: TData) {
     return (item as any)[this.keyProperty] as TKey;
   }
   private hasKey(item: TData) {
@@ -166,8 +166,21 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
       abortion.subscription.remove();
     }
   }
-  remove(item: TData, cancellation: Cancellation): Promise<void> {
-    throw new Error("Method not implemented.");
+  async remove(item: TData, cancellation: Cancellation): Promise<void> {
+    const abortion = linkAbortion(cancellation);
+    try {
+      const response = await fetch(this.itemEndpoint(item), {
+        method: 'DELETE',
+        signal: abortion.signal
+      });
+      if (200 === response.status || 202 === response.status || 204 === response.status) {
+        // success;
+        return;
+      }
+      throw this.__getErrors(response);
+    } finally {
+      abortion.subscription.remove();
+    }
   }
   async total(predicate: string, query: V1Query|undefined, customOptions: { [key: string]: string|undefined }, cancellation: Cancellation): Promise<number> {
     const abortion = linkAbortion(cancellation);

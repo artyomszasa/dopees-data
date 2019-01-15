@@ -26,7 +26,7 @@ export declare class KeyRestRepository<TData, TKey> implements KeyRepository<TDa
     readonly endpoint: string;
     readonly keyProperty: string;
     readonly items: Query<TData>;
-    private getKey;
+    protected getKey(item: TData): TKey;
     private hasKey;
     private itemEndpoint;
     private __getErrors;
