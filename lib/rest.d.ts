@@ -1,4 +1,5 @@
 import { Query, Repository, CancellableAsyncIterator, QuerySortDirection, KeyRepository, Cancellation } from "./repositories";
+import * as Q from './protocol';
 interface RestRepositoryOptions {
     type: string;
     endpoint: string;
@@ -40,5 +41,35 @@ export declare class KeyRestRepository<TData, TKey> implements KeyRepository<TDa
     exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query, customOptions?: {
         [key: string]: string | undefined;
     }): CancellableAsyncIterator<TData>;
+}
+export declare class RestQuery<T> extends Query<T> {
+    static defaultCount: number;
+    readonly repo: RestRepository<T>;
+    readonly offset: number;
+    readonly count: number;
+    readonly predicate: Q.Lambda | null;
+    readonly sortBy: string;
+    readonly sortByDirection: QuerySortDirection;
+    readonly protocolVersion: number;
+    readonly customOptions: {
+        [key: string]: string | undefined;
+    };
+    constructor(repo: RestRepository<T>, offset: number, count: number, predicate?: Q.Lambda | null, sortBy?: string, sortByDirection?: QuerySortDirection, customOptions?: {
+        [key: string]: string | undefined;
+    }, protocolVersion?: number);
+    private escape;
+    private applyProtocol;
+    private extractV1Query;
+    readonly escapedPredicate: string;
+    readonly escapedSortBy: string;
+    filter(predicate: string | Q.Lambda): RestQuery<T>;
+    skip(n: number): Query<T>;
+    take(n: number): Query<T>;
+    orderBy(selector: string, direction?: QuerySortDirection): Query<T>;
+    setCustomOptions(options: {
+        [key: string]: string | undefined;
+    }, replace?: boolean): Query<T>;
+    total(cancellation: Cancellation): Promise<number>;
+    exec(): CancellableAsyncIterator<T>;
 }
 export {};

@@ -276,7 +276,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
 
 const regex = /[\0-\x08\n-\x1F\x7F-\uFFFF]/g;
 
-class RestQuery<T> extends Query<T> {
+export class RestQuery<T> extends Query<T> {
   static defaultCount = 100000;
   readonly repo: RestRepository<T>;
   readonly offset: number;
