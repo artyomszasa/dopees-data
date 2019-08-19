@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "dopees-core": "artyomszasa/dopees-core"
+    "dopees-core": "artyomszasa/dopees-core#master"
   },
   "devDependencies": {
     "typescript": "3.2.2"

@@ -45,22 +45,22 @@ export declare abstract class Expr {
     abstract toString(context?: ToStringContext): string;
 }
 export declare class Const extends Expr {
-    value: string | null;
+    readonly value: string | null;
     constructor(value: string | null);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
     toString(): string;
 }
 export declare class Prop extends Expr {
-    instance: Expr;
-    name: string;
+    readonly instance: Expr;
+    readonly name: string;
     constructor(instance: Expr, name: string);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
     toString(context?: ToStringContext): string;
 }
 export declare class Param extends Expr {
-    name: Symbol;
+    readonly name: Symbol;
     constructor(name: Symbol);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
@@ -69,9 +69,9 @@ export declare class Param extends Expr {
 export declare class BinOp extends Expr {
     private static binOpStrings;
     static unwind(head: Expr, tail: Array<[any, string, any, Expr]>): Expr;
-    left: Expr;
-    op: BinaryOperation;
-    right: Expr;
+    readonly left: Expr;
+    readonly op: BinaryOperation;
+    readonly right: Expr;
     constructor(left: Expr, op: BinaryOperation, right: Expr);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
@@ -87,20 +87,20 @@ export declare class UnOp extends Expr {
     toString(context?: ToStringContext): string;
 }
 interface KnownFunctionCalls {
-    [name: string]: Array<number> | number;
+    [name: string]: number[] | number;
 }
 export declare class Call extends Expr {
     static knownFunctions: KnownFunctionCalls;
-    name: string;
-    args: Array<Expr>;
-    constructor(name: string, args: Array<Expr>);
+    readonly name: string;
+    readonly args: Expr[];
+    constructor(name: string, args: Expr[]);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;
     toString(context?: ToStringContext): string;
 }
 export declare class Lambda extends Expr {
-    body: Expr;
-    param: Param;
+    readonly body: Expr;
+    readonly param: Param;
     constructor(body: Expr, param: Param);
     accept<T>(visitor: ExprVisitor<T>): T;
     eq(other: Expr): boolean;

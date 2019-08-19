@@ -1,276 +1,243 @@
-import { Query, Repository, CancellableAsyncIterator, QuerySortDirection, KeyRepository, Cancellation } from "./repositories"
-import * as Q from './protocol'
-import { decoratedFetch as fetch } from 'dopees-core/lib/fetch';
+import { Query, Repository, QuerySortDirection, KeyRepository } from './repositories';
+import * as Q from './protocol';
+import { decoratedFetch as fetch, HttpError, ResponseLike } from 'dopees-core/lib/fetch';
 import * as utf8 from 'dopees-core/lib/utf8';
-
+import { Cancellation } from 'dopees-core/lib/cancellation';
+import { HttpClient, httpClientConfiguration } from 'dopees-core/lib/http';
+import { Uri } from 'dopees-core/lib/uri';
 
 const checkNum = (n: number, message: string) => {
   if (n % 1 !== 0 || n <= 0) {
     throw new TypeError(message);
   }
-}
+};
 
 interface RestRepositoryOptions {
   type: string;
   endpoint: string;
   keyProperty?: string;
   protocolVersion?: number;
-}
-
-const supportsAbortController = (function () {
-  if ((window as any).AbortController) {
-    return true;
-  }
-  return false;
-}());
-
-interface Abortion {
-  signal: AbortSignal|undefined
-  subscription: { remove(): void }
-}
-
-function linkAbortion(cancellation?: Cancellation): Abortion {
-  let signal: AbortSignal|undefined;
-  let subscription: { remove(): void };
-  if (undefined !== cancellation && supportsAbortController) {
-    const abortController = new AbortController();
-    signal = abortController.signal;
-    subscription = cancellation.subscribe(() => abortController.abort());
-  } else {
-    signal = undefined;
-    subscription = { remove() { } };
-  }
-  return { signal, subscription };
+  configuration?: string;
 }
 
 export interface V1Query {
-  query?: string,
-  type?: string
+  query?: string;
+  type?: string;
 }
 
 export interface RestRepository<T> extends Repository<T> {
-  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query, customOptions?: { [key: string]: string|undefined }): CancellableAsyncIterator<T>;
-  total(predicate: string, query: V1Query|undefined, customOptions: { [key: string]: string|undefined }, cancellation: Cancellation): Promise<number>;
+  exec(
+    offset: number,
+    count: number,
+    predicate: string,
+    sortBy?: string,
+    sortByDirection?:
+    QuerySortDirection,
+    query?: V1Query,
+    customOptions?: { [key: string]: string|undefined },
+    cancellation?: Cancellation
+  ): AsyncIterable<T>;
+
+  total(
+    predicate: string,
+    query: V1Query|undefined,
+    customOptions: { [key: string]: string|undefined },
+    cancellation: Cancellation
+  ): Promise<number>;
 }
 
 export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey>, RestRepository<TData> {
-  readonly options : RestRepositoryOptions
+  readonly clientFactory: () => HttpClient;
+  readonly options: RestRepositoryOptions;
+
   constructor(options: RestRepositoryOptions) {
     this.options = options;
+    const restMessageHandler = httpClientConfiguration.getHandler((options && options.configuration) || 'rest');
+    this.clientFactory = () => new HttpClient(restMessageHandler);
   }
-  private get collectionEndpoint () {
+
+  private get collectionEndpoint() {
     return `${this.endpoint}/${this.type}`;
   }
-  get protocolVersion () {
+
+  get protocolVersion() {
     return this.options.protocolVersion || 2;
   }
-  get type () {
+
+  get type() {
     return this.options.type;
   }
-  get endpoint () {
+
+  get endpoint() {
     return this.options.endpoint;
   }
-  get keyProperty () {
+
+  get keyProperty() {
     return this.options.keyProperty || 'id';
   }
+
   get items(): Query<TData> {
+    // tslint:disable-next-line:max-line-length
     return new RestQuery<TData>(this, 0, RestQuery.defaultCount, null, undefined, undefined, {}, this.options.protocolVersion);
   }
+
   protected getKey(item: TData) {
     return (item as any)[this.keyProperty] as TKey;
   }
+
   private hasKey(item: TData) {
     return !!this.getKey(item);
   }
+
   private itemEndpoint(item: TData) {
     return `${this.endpoint}/${this.type}/${this.getKey(item)}`;
   }
-  private __getErrors (response: Response) {
+
+  private __getError(response: ResponseLike): HttpError {
     const messages = response.headers.get('X-Message');
     if (messages) {
-      const msgs = messages.split(',').map(decodeURIComponent);
-      if (msgs.length === 1) {
-        return msgs[0];
-      }
-      return msgs;
+      return new HttpError(response, messages);
     }
-    return response.statusText;
+    return new HttpError(response);
   }
+
   async lookup(key: TKey, cancellation?: Cancellation): Promise<TData> {
-    const abortion = linkAbortion(cancellation);
-    try {
-      const uri = `${this.endpoint}/${this.type}/${key}`;
-      const response = await fetch(uri, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-        signal: abortion.signal
-      });
-      if (response.ok) {
-        return await response.json();
-      }
-      throw this.__getErrors(response);
-    } finally {
-      abortion.subscription.remove();
-    }
+    const uri = `${this.endpoint}/${this.type}/${key}`;
+    return this.clientFactory().getJson(uri, cancellation);
   }
+
   async update(item: TData, cancellation?: Cancellation): Promise<TData> {
-    const abortion = linkAbortion(cancellation);
-    try {
-      const response = await fetch(this.itemEndpoint(item), {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(item),
-        signal: abortion.signal
-      });
-      if (response.ok) {
-        return await this.lookup(this.getKey(item), cancellation);
-      }
-      throw this.__getErrors(response);
-    } finally {
-      abortion.subscription.remove();
+    if (!item) {
+      throw new TypeError('unable to update empty value');
     }
+    const response = await this.clientFactory().put(this.itemEndpoint(item), <any> item, cancellation);
+    if (response.ok) {
+      return await this.lookup(this.getKey(item), cancellation);
+    }
+    throw this.__getError(response);
   }
+
   async insert(item: TData, cancellation: Cancellation): Promise<TData> {
-    const abortion = linkAbortion(cancellation);
-    try {
-      const response = await fetch(this.collectionEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item),
-        signal: abortion.signal
-      });
-      if (response.ok) {
-        const uri = response.headers.get('Location');
-        if (!uri) {
-          throw new Error('rest insert did not return a location');
-        }
-        const lookupAbortion = linkAbortion(cancellation);
-        try {
-          const resp = await fetch(uri, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            signal: lookupAbortion.signal
-          })
-          if (resp.ok) {
-            return await resp.json();
-          }
-          throw this.__getErrors(resp);
-        } finally {
-          lookupAbortion.subscription.remove();
-        }
-      }
-      throw this.__getErrors(response);
-    } finally {
-      abortion.subscription.remove();
+    if (!item) {
+      throw new TypeError('unable to insert empty value');
     }
+    const response = await this.clientFactory().post(this.collectionEndpoint, <any> item, cancellation);
+    if (response.ok) {
+      const uri = response.headers.get('Location');
+      if (!uri) {
+        throw new Error('rest insert did not return a location');
+      }
+      return this.clientFactory().getJson(uri, cancellation);
+    }
+    throw this.__getError(response);
   }
+
   async remove(item: TData, cancellation: Cancellation): Promise<void> {
-    const abortion = linkAbortion(cancellation);
-    try {
-      const response = await fetch(this.itemEndpoint(item), {
-        method: 'DELETE',
-        signal: abortion.signal
-      });
-      if (200 === response.status || 202 === response.status || 204 === response.status) {
-        // success;
-        return;
-      }
-      throw this.__getErrors(response);
-    } finally {
-      abortion.subscription.remove();
+    const response = await this.clientFactory().delete(this.itemEndpoint(item), cancellation);
+    if (200 === response.status || 202 === response.status || 204 === response.status) {
+      // success;
+      return;
     }
+    throw this.__getError(response);
   }
+
+  // tslint:disable-next-line:max-line-length
   async total(predicate: string, query: V1Query|undefined, customOptions: { [key: string]: string|undefined }, cancellation: Cancellation): Promise<number> {
-    const abortion = linkAbortion(cancellation);
-    try {
-      const headers = new Headers();
-      headers.append('Accept', 'application/json');
-      headers.append('X-Filter', predicate);
-      if (query && query.query) {
-        headers.append('X-Query', query.query);
-        headers.append('X-SearchType', query.type || 'partial');
+    const headers = new Headers();
+    headers.append('Accept', 'application/json');
+    headers.append('X-Filter', predicate);
+    if (query && query.query) {
+      headers.append('X-Query', query.query);
+      headers.append('X-SearchType', query.type || 'partial');
+    }
+    const customKeys = Object.keys(customOptions || {});
+    customKeys.forEach((key) => {
+      const value = customOptions[key];
+      if (value) {
+        headers.append(key, value);
       }
-      const customKeys = Object.keys(customOptions || {});
-      customKeys.forEach((key) => {
-        const value = customOptions[key];
-        if (value) {
-          headers.append(key, value);
-        }
-      });
-      const response = await fetch(this.collectionEndpoint, { headers, signal: abortion.signal });
-      if (response.ok) {
-        const header = response.headers.get('X-Total-Count');
-        return header ? (parseInt(header, 10) || 0) : 0;
-      } else {
-        throw new Error(`Hiba lépett fel adatok lekérdezése közben: ${response.statusText}`);
-      }
-    } finally {
-      abortion.subscription.remove();
+    });
+    const response = await this.clientFactory().send({
+      uri: new Uri(this.collectionEndpoint),
+      headers
+    }, cancellation);
+    if (response.ok) {
+      const header = response.headers.get('X-Total-Count');
+      return header ? (parseInt(header, 10) || 0) : 0;
+    } else {
+      throw new Error(`Hiba lépett fel adatok lekérdezése közben: ${response.statusText}`);
     }
   }
-  exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query, customOptions?: { [key: string]: string|undefined }): CancellableAsyncIterator<TData> {
+
+  exec(
+    offset: number,
+    count: number,
+    predicate: string,
+    sortBy?: string,
+    sortByDirection?: QuerySortDirection,
+    query?: V1Query,
+    customOptions?: { [key: string]: string|undefined },
+    cancellation?: Cancellation
+  ): AsyncIterable<TData> {
     const repo = this;
-    let error : any = null;
-    let items : TData[]|null = null;
+    let error: any = null;
+    let items: TData[]|null = null;
     let index = 0;
     return {
-      async next(cancellation?: Cancellation): Promise<IteratorResult<TData>> {
-        cancellation && cancellation.throwIfCancelled();
-        if (null !== error) {
-          throw error;
-        }
-        if (!items) {
-          // Első next() meghívásakor ez fut le.
-          const abortion = linkAbortion(cancellation);
-          try {
-            const headers = new Headers();
-            headers.append('Accept', 'application/json');
-            headers.append('X-Offset', String(offset));
-            headers.append('X-Count', String(count));
-            headers.append('X-Filter', predicate);
-            headers.append('X-Sort-By', sortBy || '');
-            headers.append('X-Sort-By-Direction', sortByDirection || '');
-            if (query && query.query) {
-              headers.append('X-Query', query.query);
-              headers.append('X-SearchType', query.type || 'partial');
+      [Symbol.asyncIterator](): AsyncIterator<TData> {
+        return {
+          async next(): Promise<IteratorResult<TData>> {
+            if (cancellation) {
+              cancellation.throwIfCancelled();
             }
-            const customKeys = Object.keys(customOptions || {});
-            customKeys.forEach((key) => {
-              const value = (customOptions || {})[key];
-              if (value) {
-                headers.append(key, value);
-              }
-            });
-            const response = await fetch(repo.collectionEndpoint, { headers, signal: abortion.signal });
-            if (response.ok) {
-              items = await response.json();
-            } else {
-              error = new Error(`Hiba lépett fel adatok lekérdezése közben: ${response.statusText}`);
+            if (null !== error) {
               throw error;
             }
-          } finally {
-            abortion.subscription.remove();
+            if (!items) {
+              // Első next() meghívásakor ez fut le.
+              const headers = new Headers();
+              headers.append('Accept', 'application/json');
+              headers.append('X-Offset', String(offset));
+              headers.append('X-Count', String(count));
+              headers.append('X-Filter', predicate);
+              headers.append('X-Sort-By', sortBy || '');
+              headers.append('X-Sort-By-Direction', sortByDirection || '');
+              if (query && query.query) {
+                headers.append('X-Query', query.query);
+                headers.append('X-SearchType', query.type || 'partial');
+              }
+              const customKeys = Object.keys(customOptions || {});
+              customKeys.forEach((key) => {
+                const val = (customOptions || {})[key];
+                if (val) {
+                  headers.append(key, val);
+                }
+              });
+              // const response = await fetch(repo.collectionEndpoint, { headers, signal: abortion.signal });
+              const response = await repo.clientFactory().send({
+                uri: Uri.from(repo.collectionEndpoint),
+                headers
+              }, cancellation);
+              if (response.ok && response.content) {
+                items = await response.content.json();
+              } else {
+                error = new Error(`Hiba lépett fel adatok lekérdezése közben: ${response.statusText}`);
+                throw error;
+              }
+            }
+            if (!items) {
+              throw new Error('should never happen');
+            }
+            if (index >= items.length) {
+              return { done: true, value: <any> undefined };
+            }
+            const value = items[index];
+            ++index;
+            return { done: false, value };
           }
-        }
-        if (!items) {
-          throw new Error('should never happen');
-        }
-        if (index >= items.length) {
-          return { done: true, value: <TData><unknown>undefined }
-        }
-        const value = items[index];
-        ++index;
-        return {
-          done: false,
-          value: value
         };
-      },
-      cancel() {
-          //FIXME: implement
       }
-    }
+    };
   }
 }
 
@@ -286,7 +253,8 @@ export class RestQuery<T> extends Query<T> {
   readonly sortByDirection: QuerySortDirection;
   readonly protocolVersion: number;
   readonly customOptions: { [key: string]: string|undefined };
-  constructor (repo: RestRepository<T>, offset: number, count: number, predicate?: Q.Lambda|null, sortBy?: string, sortByDirection?: QuerySortDirection, customOptions?: { [key: string]: string|undefined }, protocolVersion?: number) {
+  // tslint:disable-next-line:max-line-length
+  constructor(repo: RestRepository<T>, offset: number, count: number, predicate?: Q.Lambda|null, sortBy?: string, sortByDirection?: QuerySortDirection, customOptions?: { [key: string]: string|undefined }, protocolVersion?: number) {
     super();
     this.repo = repo;
     this.offset = offset || 0;
@@ -297,12 +265,14 @@ export class RestQuery<T> extends Query<T> {
     this.customOptions = customOptions || {};
     this.protocolVersion = protocolVersion || 2;
   }
-  private escape (input: string|Q.Expr|null) {
+  private escape(input: string|Q.Expr|null) {
     if (!input) {
       return '';
     }
     const inp = input instanceof Q.Expr ? this.applyProtocol(input).toString() : input;
-    return utf8.utf8encode(inp).replace(regex, m => '%' + ('0' + m.charCodeAt(0).toString(16).toUpperCase()).slice(-2));
+    return utf8
+      .utf8encode(inp)
+      .replace(regex, (m) => '%' + ('0' + m.charCodeAt(0).toString(16).toUpperCase()).slice(-2));
   }
 
   private applyProtocol(expr: Q.Expr) {
@@ -311,12 +281,13 @@ export class RestQuery<T> extends Query<T> {
       return expr.body.accept<Q.Expr>({
         visitConst(c) { return c; },
         visitParam(p) { return p; },
+        // tslint:disable-next-line:max-line-length
         visitProp(p) { return p.instance.eq(param) ? new Q.Param(<any> p.name) : new Q.Prop(p.instance.accept(this), p.name); },
         visitBinary(b) { return new Q.BinOp(b.left.accept(this), b.op, b.right.accept(this)); },
         visitUnary(u) { return new Q.UnOp(u.op, u.operand.accept(this)); },
-        visitCall(c) { return new Q.Call(c.name, c.args.map(arg => arg.accept(this))); },
+        visitCall(c) { return new Q.Call(c.name, c.args.map((arg) => arg.accept(this))); },
         visitLambda(l) { return new Q.Lambda(l.body.accept(this), l.param); }
-      })
+      });
     }
     return expr;
   }
@@ -339,7 +310,7 @@ export class RestQuery<T> extends Query<T> {
         return new Q.BinOp(l, b.op, r);
       },
       visitUnary(u) { return new Q.UnOp(u.op, u.operand.accept(this)); },
-      visitCall (c) {
+      visitCall(c) {
         if ('partialMatch' === c.name && 2 === c.args.length) {
           const arg = c.args[1];
           if (arg instanceof Q.Const && arg.value) {
@@ -348,7 +319,7 @@ export class RestQuery<T> extends Query<T> {
           }
           throw new Error('not supported partial match in protocol v1');
         }
-        return new Q.Call(c.name, c.args.map(arg => arg.accept(this)));
+        return new Q.Call(c.name, c.args.map((arg) => arg.accept(this)));
       },
       visitLambda(l) { return new Q.Lambda(l.body.accept(this), l.param); }
     });
@@ -358,10 +329,10 @@ export class RestQuery<T> extends Query<T> {
     };
   }
 
-  get escapedPredicate () {
+  get escapedPredicate() {
     return this.escape(this.predicate);
   }
-  get escapedSortBy () {
+  get escapedSortBy() {
     return this.escape(this.sortBy);
   }
   filter(predicate: string|Q.Lambda) {
@@ -428,7 +399,7 @@ export class RestQuery<T> extends Query<T> {
       this.predicate,
       this.sortBy,
       this.sortByDirection,
-      options,
+      opts,
       this.protocolVersion);
   }
   async total(cancellation: Cancellation): Promise<number> {
@@ -450,7 +421,7 @@ export class RestQuery<T> extends Query<T> {
     }
     return this.repo.total(predicate, v1Query, this.customOptions, cancellation);
   }
-  exec(): CancellableAsyncIterator<T> {
+  exec(): AsyncIterable<T> {
     let predicate: string;
     let v1Query: V1Query|undefined;
     if (!this.predicate) {
@@ -467,6 +438,7 @@ export class RestQuery<T> extends Query<T> {
         predicate = this.escape(this.predicate);
       }
     }
+    // tslint:disable-next-line:max-line-length
     return this.repo.exec(this.offset, this.count, predicate, this.sortBy, this.sortByDirection, v1Query, this.customOptions);
   }
-};
+}

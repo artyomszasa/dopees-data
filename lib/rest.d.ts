@@ -1,10 +1,13 @@
-import { Query, Repository, CancellableAsyncIterator, QuerySortDirection, KeyRepository, Cancellation } from "./repositories";
+import { Query, Repository, QuerySortDirection, KeyRepository } from './repositories';
 import * as Q from './protocol';
+import { Cancellation } from 'dopees-core/lib/cancellation';
+import { HttpClient } from 'dopees-core/lib/http';
 interface RestRepositoryOptions {
     type: string;
     endpoint: string;
     keyProperty?: string;
     protocolVersion?: number;
+    configuration?: string;
 }
 export interface V1Query {
     query?: string;
@@ -13,12 +16,13 @@ export interface V1Query {
 export interface RestRepository<T> extends Repository<T> {
     exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query, customOptions?: {
         [key: string]: string | undefined;
-    }): CancellableAsyncIterator<T>;
+    }, cancellation?: Cancellation): AsyncIterable<T>;
     total(predicate: string, query: V1Query | undefined, customOptions: {
         [key: string]: string | undefined;
     }, cancellation: Cancellation): Promise<number>;
 }
 export declare class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey>, RestRepository<TData> {
+    readonly clientFactory: () => HttpClient;
     readonly options: RestRepositoryOptions;
     constructor(options: RestRepositoryOptions);
     private readonly collectionEndpoint;
@@ -30,7 +34,7 @@ export declare class KeyRestRepository<TData, TKey> implements KeyRepository<TDa
     protected getKey(item: TData): TKey;
     private hasKey;
     private itemEndpoint;
-    private __getErrors;
+    private __getError;
     lookup(key: TKey, cancellation?: Cancellation): Promise<TData>;
     update(item: TData, cancellation?: Cancellation): Promise<TData>;
     insert(item: TData, cancellation: Cancellation): Promise<TData>;
@@ -40,7 +44,7 @@ export declare class KeyRestRepository<TData, TKey> implements KeyRepository<TDa
     }, cancellation: Cancellation): Promise<number>;
     exec(offset: number, count: number, predicate: string, sortBy?: string, sortByDirection?: QuerySortDirection, query?: V1Query, customOptions?: {
         [key: string]: string | undefined;
-    }): CancellableAsyncIterator<TData>;
+    }, cancellation?: Cancellation): AsyncIterable<TData>;
 }
 export declare class RestQuery<T> extends Query<T> {
     static defaultCount: number;
@@ -70,6 +74,6 @@ export declare class RestQuery<T> extends Query<T> {
         [key: string]: string | undefined;
     }, replace?: boolean): Query<T>;
     total(cancellation: Cancellation): Promise<number>;
-    exec(): CancellableAsyncIterator<T>;
+    exec(): AsyncIterable<T>;
 }
 export {};

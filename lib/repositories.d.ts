@@ -1,40 +1,14 @@
+import { Cancellation } from 'dopees-core/lib/cancellation';
 import * as Q from './protocol';
-export declare class CancelledError extends Error {
-    constructor();
+export declare class None {
 }
-export declare abstract class Cancellation {
-    static none: Cancellation;
-    abstract cancelled: boolean;
-    abstract subscribe(callback: Function): {
-        remove(): void;
-    };
-    throwIfCancelled(): void;
-}
-export interface None {
-}
-export declare const None: None;
-export interface CancellableAsyncIterator<T> {
-    next(cancellation?: Cancellation): Promise<IteratorResult<T>>;
-    cancel(): void;
-}
-export declare class CancellationSource extends Cancellation {
-    static link(cancellation1: Cancellation, cancellation2: Cancellation): {
-        readonly cancelled: boolean;
-    };
-    readonly callbacks: Function[];
-    cancelled: boolean;
-    readonly cancellation: Cancellation;
-    cancel(): void;
-    subscribe(callback: Function): {
-        remove(): void;
-    };
-}
+export declare const none: None;
 export declare enum QuerySortDirection {
     Asc = "asc",
     Desc = "desc"
 }
 export declare abstract class Query<T> {
-    abstract exec(): CancellableAsyncIterator<T>;
+    abstract exec(cancellation?: Cancellation): AsyncIterable<T>;
     abstract filter(predicate: string | Q.Expr): Query<T>;
     abstract skip(n: number): Query<T>;
     abstract take(n: number): Query<T>;
@@ -42,12 +16,12 @@ export declare abstract class Query<T> {
     abstract setCustomOptions(options: {
         [key: string]: string | undefined;
     }, replace?: boolean): Query<T>;
-    abstract total(cancellation: Cancellation): Promise<number>;
+    abstract total(cancellation?: Cancellation): Promise<number>;
     forEach(callback: (item: T, index: number) => Promise<any>, cancellation?: Cancellation): Promise<void>;
     toArray(cancellation?: Cancellation): Promise<T[]>;
-    first(cancellation?: Cancellation): Promise<T>;
+    first(cancellation?: Cancellation): Promise<IteratorResult<T>>;
     tryFirst(cancellation?: Cancellation): Promise<T | None>;
-    single(cancellation?: Cancellation): Promise<T>;
+    single(cancellation?: Cancellation): Promise<None | T>;
     trySingle(cancellation?: Cancellation): Promise<T | None>;
 }
 export interface Repository<TData> {
@@ -69,5 +43,5 @@ export declare class RepositoryStore {
     get<T>(name: string): Repository<T>;
     getRepository<TData, TKey>(name: string): KeyRepository<TData, TKey>;
 }
-declare const repositories: RepositoryStore;
-export { repositories };
+export declare const repositories: RepositoryStore;
+export {};
