@@ -146,6 +146,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
     const headers = new Headers();
     headers.append('Accept', 'application/json');
     headers.append('X-Filter', predicate);
+    headers.append('X-Count', '0');
     if (query && query.query) {
       headers.append('X-Query', query.query);
       headers.append('X-SearchType', query.type || 'partial');
