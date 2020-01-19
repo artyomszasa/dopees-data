@@ -6,6 +6,13 @@ import { Cancellation } from 'dopees-core/lib/cancellation';
 import { HttpClient, httpClientConfiguration } from 'dopees-core/lib/http';
 import { Uri } from 'dopees-core/lib/uri';
 
+const b64DecodeUnicode = (str: string) => {
+  // Going backwards: from bytestream, to percent-encoding, to original string.
+  return decodeURIComponent(atob(str).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+  }).join(''));
+};
+
 const checkNum = (n: number, message: string) => {
   if (n % 1 !== 0 || n <= 0) {
     throw new TypeError(message);
@@ -96,7 +103,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
   private __getError(response: ResponseLike): HttpError {
     const messages = response.headers.get('X-Message');
     if (messages) {
-      return new HttpError(response, messages);
+      return new HttpError(response, b64DecodeUnicode(messages));
     }
     return new HttpError(response);
   }
