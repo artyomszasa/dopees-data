@@ -103,7 +103,17 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
   private __getError(response: ResponseLike): HttpError {
     const messages = response.headers.get('X-Message');
     if (messages) {
-      return new HttpError(response, b64DecodeUnicode(messages));
+      let text: string;
+      try {
+        text = b64DecodeUnicode(messages);
+      } catch (exn) {
+        try {
+          text = decodeURIComponent(messages);
+        } catch (exn) {
+          text = messages;
+        }
+      }
+      return new HttpError(response, text);
     }
     return new HttpError(response);
   }
