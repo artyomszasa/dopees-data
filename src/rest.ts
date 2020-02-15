@@ -165,7 +165,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
     headers.append('X-Filter', predicate);
     headers.append('X-Count', '0');
     if (query && query.query) {
-      headers.append('X-Query', query.query);
+      headers.append('X-Query', encodeURIComponent(query.query));
       headers.append('X-SearchType', query.type || 'partial');
     }
     const customKeys = Object.keys(customOptions || {});
@@ -221,7 +221,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
               headers.append('X-Sort-By', sortBy || '');
               headers.append('X-Sort-By-Direction', sortByDirection || '');
               if (query && query.query) {
-                headers.append('X-Query', query.query);
+                headers.append('X-Query', encodeURIComponent(query.query));
                 headers.append('X-SearchType', query.type || 'partial');
               }
               const customKeys = Object.keys(customOptions || {});
