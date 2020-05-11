@@ -175,6 +175,17 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
         headers.append(key, value);
       }
     });
+    if (this.protocolVersion > 2) {
+      const responseV3 = await this.clientFactory().send({
+        uri: new Uri(this.collectionEndpoint + '/count'),
+        headers
+      }, cancellation);
+      if (responseV3.ok) {
+        const content = await responseV3.content!.text();
+        return parseInt(content, 10) || 0;
+      }
+      throw new Error(`Hiba lépett fel adatok lekérdezése közben: ${responseV3.statusText}`);
+    }
     const response = await this.clientFactory().send({
       uri: new Uri(this.collectionEndpoint),
       headers
@@ -182,9 +193,8 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
     if (response.ok) {
       const header = response.headers.get('X-Total-Count');
       return header ? (parseInt(header, 10) || 0) : 0;
-    } else {
-      throw new Error(`Hiba lépett fel adatok lekérdezése közben: ${response.statusText}`);
     }
+    throw new Error(`Hiba lépett fel adatok lekérdezése közben: ${response.statusText}`);
   }
 
   exec(
