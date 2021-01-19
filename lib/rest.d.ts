@@ -35,6 +35,7 @@ export declare class KeyRestRepository<TData, TKey> implements KeyRepository<TDa
     private hasKey;
     private itemEndpoint;
     private __getError;
+    private escapeV1Query;
     lookup(key: TKey, cancellation?: Cancellation): Promise<TData>;
     update(item: TData, cancellation?: Cancellation): Promise<TData>;
     insert(item: TData, cancellation: Cancellation): Promise<TData>;

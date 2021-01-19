@@ -53,6 +53,8 @@ export interface RestRepository<T> extends Repository<T> {
   ): Promise<number>;
 }
 
+const rquoted = /"((?:[^"\\]|.)*)"/;
+
 export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey>, RestRepository<TData> {
   readonly clientFactory: () => HttpClient;
   readonly options: RestRepositoryOptions;
@@ -118,6 +120,14 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
     return new HttpError(response);
   }
 
+  private escapeV1Query(query: string) {
+    const m = rquoted.exec(query);
+    if (m) {
+      return query.substr(0, m.index) + '"' + encodeURIComponent(m[1]) + '"' + query.substr(m.index + m.length, 0);
+    }
+    return encodeURIComponent(query);
+  }
+
   async lookup(key: TKey, cancellation?: Cancellation): Promise<TData> {
     const uri = `${this.endpoint}/${this.type}/${key}`;
     return this.clientFactory().getJson(uri, cancellation);
@@ -165,7 +175,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
     headers.append('X-Filter', predicate);
     headers.append('X-Count', '0');
     if (query && query.query) {
-      headers.append('X-Query', encodeURIComponent(query.query));
+      headers.append('X-Query', this.escapeV1Query(query.query));
       headers.append('X-SearchType', query.type || 'partial');
     }
     const customKeys = Object.keys(customOptions || {});
@@ -231,7 +241,7 @@ export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey
               headers.append('X-Sort-By', sortBy || '');
               headers.append('X-Sort-By-Direction', sortByDirection || '');
               if (query && query.query) {
-                headers.append('X-Query', encodeURIComponent(query.query));
+                headers.append('X-Query', repo.escapeV1Query(query.query));
                 headers.append('X-SearchType', query.type || 'partial');
               }
               const customKeys = Object.keys(customOptions || {});
@@ -321,7 +331,7 @@ export class RestQuery<T> extends Query<T> {
   }
 
   private extractV1Query(expr: Q.Expr) {
-    const q: { query?: string } = {};
+    const q: { query?: string, type?: string } = {};
     const v1Expr = expr.accept<Q.Expr>({
       visitConst(c) { return c; },
       visitParam(p) { return p; },
@@ -346,6 +356,15 @@ export class RestQuery<T> extends Query<T> {
             return new Q.Const(<any> true);
           }
           throw new Error('not supported partial match in protocol v1');
+        }
+        if ('exactMatch' === c.name && 2 === c.args.length) {
+          const arg = c.args[1];
+          if (arg instanceof Q.Const && arg.value) {
+            q.query = arg.value;
+            q.type = 'exact';
+            return new Q.Const(<any> true);
+          }
+          throw new Error('not supported exact match in protocol v1');
         }
         return new Q.Call(c.name, c.args.map((arg) => arg.accept(this)));
       },
@@ -413,7 +432,7 @@ export class RestQuery<T> extends Query<T> {
       this.offset,
       this.count,
       this.predicate,
-      selector,
+      this.protocolVersion < 2 ? this.escape(Q.parse(selector)) : selector,
       direction || QuerySortDirection.Asc,
       this.customOptions,
       this.protocolVersion);
@@ -443,6 +462,9 @@ export class RestQuery<T> extends Query<T> {
         if (predicate && predicate.startsWith('(') && predicate.endsWith(')')) {
           predicate = predicate.substr(1, predicate.length - 2);
         }
+        if (predicate === 'true') {
+          predicate = '';
+        }
       } else {
         predicate = this.escape(this.predicate);
       }
@@ -461,6 +483,9 @@ export class RestQuery<T> extends Query<T> {
         v1Query = data.query;
         if (predicate && predicate.startsWith('(') && predicate.endsWith(')')) {
           predicate = predicate.substr(1, predicate.length - 2);
+        }
+        if (predicate === 'true') {
+          predicate = '';
         }
       } else {
         predicate = this.escape(this.predicate);
