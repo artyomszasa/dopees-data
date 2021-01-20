@@ -54,6 +54,7 @@ export interface RestRepository<T> extends Repository<T> {
 }
 
 const rquoted = /"((?:[^"\\]|.)*)"/;
+const isSimple = /^[a-z][a-z0-9]*$/i;
 
 export class KeyRestRepository<TData, TKey> implements KeyRepository<TData, TKey>, RestRepository<TData> {
   readonly clientFactory: () => HttpClient;
@@ -432,7 +433,7 @@ export class RestQuery<T> extends Query<T> {
       this.offset,
       this.count,
       this.predicate,
-      this.protocolVersion < 2 ? this.escape(Q.parse(selector)) : selector,
+      this.protocolVersion < 2 ? (isSimple.test(selector) ? selector : this.escape(Q.parse(selector))) : selector,
       direction || QuerySortDirection.Asc,
       this.customOptions,
       this.protocolVersion);
